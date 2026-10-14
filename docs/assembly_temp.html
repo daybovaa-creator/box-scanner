@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Сборка заказов - Box Scanner</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>📋 Сборка заказов</h1>
+            <a href="index.html" class="btn btn-secondary">← Назад</a>
+        </header>
+
+        <main>
+            <!-- Создание нового сборочного листа -->
+            <div class="card" id="create-section">
+                <div class="card-header">Новый сборочный лист</div>
+
+                <div class="form-group">
+                    <label>Название сборочного листа:</label>
+                    <input type="text" id="assembly-name" class="form-control" placeholder="Например: Сборка 14.10.2026">
+                </div>
+
+                <div class="form-group">
+                    <label>Вставьте артикулы из сборочного листа Ozon:</label>
+                    <p style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 0.5rem;">
+                        Каждый артикул с новой строки. Можно вставить из PDF или ввести вручную.
+                    </p>
+                    <textarea id="articles-input" class="form-control" rows="10" placeholder="502-010601-209&#10;E0027602&#10;24121001&#10;..."></textarea>
+                </div>
+
+                <button onclick="createAssemblyList()" id="create-btn" class="btn btn-success" style="width: 100%;">
+                    📥 Создать сборочный лист
+                </button>
+            </div>
+
+            <!-- Маршрут сборки -->
+            <div id="route-section" style="display: none;">
+                <div class="card">
+                    <div class="card-header">
+                        <span id="route-title">Маршрут сборки</span>
+                        <button onclick="resetAssembly()" class="btn btn-secondary" style="float: right;">
+                            Новый сборочный лист
+                        </button>
+                    </div>
+
+                    <div id="route-boxes"></div>
+
+                    <!-- Не найденные товары -->
+                    <div id="not-found-section" style="display: none;">
+                        <h3 style="color: var(--danger); margin-top: 2rem;">❌ Товары не найдены:</h3>
+                        <ul id="not-found-list" style="list-style: none; padding: 0;">
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="app.js"></script>
+    <script>
+        let currentAssemblyId = null;
+
+        // Создать сборочный лист
+        async function createAssemblyList() {
+            const name = document.getElementById('assembly-name').value.trim();
+            const articlesText = document.getElementById('articles-input').value.trim();
+
+            if (!name) {
+                Utils.showAlert('Введите название сборочного листа', 'warning');
+                return;
+            }
+
+            if (!articlesText) {
+                Utils.showAlert('Введите артикулы', 'warning');
+                return;
+            }
+
+            // Парсим артикулы
+            const articles = Utils.parseArticles(articlesText);
+            if (articles.length === 0) {
+                Utils.showAlert('Не удалось распознать артикулы', 'warning');
+                return;
+            }
+
+            Utils.setLoading('create-btn', true);
+
+            try {
+                // Создаём сборочный лист
+                const assembly = await API.call('/api/assembly', {
+                    method: 'POST',
+                    body: JSON.stringify({ name: name })
+                });
+
+                currentAssemblyId = assembly.id;
+
+                // Добавляем товары
+                const items = articles.map((article, index) => ({
+                    article: article,
+                    quantity_needed: 1,
+                    ozon_label: null  // Можно расширить функционал и парсить этикетки из PDF
+                }));
+
+                await API.call(`/api/assembly/${assembly.id}/items`, {
+                    method: 'POST',
+                    body: JSON.stringify(items)
+                });
+
+                // Получаем маршрут сборки
+                const route = await API.call(`/api/assembly/${assembly.id}/route`);
+
+                // Показываем маршрут
+                displayRoute(route, name);
+
+            } catch (error) {
+                Utils.showAlert(error.message, 'danger');
+            } finally {
+                Utils.setLoading('create-btn', false);
+            }
+        }
+
+        // Отобразить маршрут сборки
+        function displayRoute(route, assemblyName) {
+            document.getElementById('create-section').style.display = 'none';
+            document.getElementById('route-section').style.display = 'block';
+            document.getElementById('route-title').textContent = assemblyName;
+
+            const routeBoxes = document.getElementById('route-boxes');
+            routeBoxes.innerHTML = '';
+
+            if (route.boxes.length === 0) {
+                routeBoxes.innerHTML = `
+                    <div class="alert alert-warning">
+                        ⚠️ Ни один товар не найден в коробках
+                    </div>
+                `;
+            } else {
+                route.boxes.forEach((box, index) => {
+                    const boxCard = document.createElement('div');
+                    boxCard.className = 'route-box';
+
+                    let itemsHtml = '';
+                    box.items.forEach(item => {
+                        itemsHtml += `
+                            <div class="route-item">
+                                <div style="display: flex; justify-content: space-between; align-items: center;">
+                                    <div style="flex: 1;">
+                                        <div style="font-weight: 600; color: var(--primary);">
+                                            📦 ${item.article}
+                                        </div>
+                                        <div style="font-size: 0.9rem; color: var(--text-muted); margin-top: 0.25rem;">
+                                            ${item.name}
+                                        </div>
+                                    </div>
+                                    <div style="text-align: right; margin-left: 1rem;">
+                                        <div style="font-weight: 600;">${item.quantity_in_box} шт</div>
+                                        ${item.ozon_label ? `<div style="font-size: 0.9rem; color: var(--text-muted);">→ ${item.ozon_label}</div>` : ''}
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+                    });
+
+                    boxCard.innerHTML = `
+                        <div class="route-box-header">
+                            ${index + 1}. ${box.box_code} (${box.items.length} ${pluralize(box.items.length, 'позиция', 'позиции', 'позиций')})
+                        </div>
+                        ${itemsHtml}
+                        <a href="box.html?code=${box.box_code}" class="btn btn-primary" style="width: 100%; margin-top: 1rem;">
+                            📦 Открыть коробку
+                        </a>
+                    `;
+
+                    routeBoxes.appendChild(boxCard);
+                });
+            }
+
+            // Не найденные товары
+            if (route.not_found.length > 0) {
+                document.getElementById('not-found-section').style.display = 'block';
+                const notFoundList = document.getElementById('not-found-list');
+                notFoundList.innerHTML = '';
+
+                route.not_found.forEach(article => {
+                    const li = document.createElement('li');
+                    li.style.padding = '0.75rem';
+                    li.style.background = '#fee2e2';
+                    li.style.borderRadius = '8px';
+                    li.style.marginBottom = '0.5rem';
+                    li.style.border = '2px solid var(--danger)';
+                    li.textContent = article;
+                    notFoundList.appendChild(li);
+                });
+            } else {
+                document.getElementById('not-found-section').style.display = 'none';
+            }
+        }
+
+        // Сброс (создать новый сборочный лист)
+        function resetAssembly() {
+            document.getElementById('route-section').style.display = 'none';
+            document.getElementById('create-section').style.display = 'block';
+            document.getElementById('assembly-name').value = '';
+            document.getElementById('articles-input').value = '';
+            currentAssemblyId = null;
+        }
+
+        // Склонение числительных
+        function pluralize(count, one, few, many) {
+            const mod10 = count % 10;
+            const mod100 = count % 100;
+
+            if (mod10 === 1 && mod100 !== 11) {
+                return one;
+            } else if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) {
+                return few;
+            } else {
+                return many;
+            }
+        }
+
+        // Автозаполнение названия (текущая дата)
+        window.addEventListener('load', () => {
+            const now = new Date();
+            const dateStr = now.toLocaleDateString('ru-RU');
+            document.getElementById('assembly-name').value = `Сборка ${dateStr}`;
+        });
+    </script>
+</body>
+</html>
