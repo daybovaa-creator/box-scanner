@@ -13,20 +13,91 @@
             <a href="index.html" class="btn btn-secondary">← Назад</a>
         </header>
         <main>
+            <!-- Загрузка PDF сборочного листа -->
             <div class="card">
-                <div class="card-header">Вставьте артикулы из Ozon</div>
+                <div class="card-header">📥 Загрузите сборочный лист от Ozon</div>
+                <p>Загрузите PDF файл со сборочным листом — система автоматически найдёт все артикулы и построит маршрут:</p>
+                <div class="form-group">
+                    <input type="file" id="pdf-upload" accept=".pdf" class="form-control">
+                </div>
+                <button onclick="uploadAndParsePDF()" class="btn btn-primary" style="width: 100%;">📥 Загрузить и построить маршрут</button>
+                <p style="text-align: center; margin: 1rem 0; color: var(--text-muted);">Или вставить артикулы вручную</p>
+            </div>
+
+            <!-- Ручной ввод артикулов -->
+            <div class="card">
+                <div class="card-header">✏️ Вставьте артикулы вручную</div>
                 <p>Скопируйте артикулы из сборочного листа и вставьте сюда (по одному на строку):</p>
                 <div class="form-group">
-                    <textarea id="articles-input" class="form-control" rows="10" placeholder="СС5-00001&#10;СС5-00002&#10;СС5-00003"></textarea>
+                    <textarea id="articles-input" class="form-control" rows="10" placeholder="502-010601-209&#10;E0027602&#10;504-010700-200"></textarea>
                 </div>
                 <button onclick="generateRoute()" class="btn btn-primary" style="width: 100%;">🗺️ Построить маршрут</button>
             </div>
+
             <div id="route-results"></div>
         </main>
     </div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
     <script src="db.js"></script>
     <script>
+        // Инициализация PDF.js
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
         (async () => { await DB.init(); })();
+
+        // Загрузить и парсить PDF
+        async function uploadAndParsePDF() {
+            const fileInput = document.getElementById('pdf-upload');
+            const resultsDiv = document.getElementById('route-results');
+
+            if (!fileInput.files || fileInput.files.length === 0) {
+                alert('Выберите PDF файл');
+                return;
+            }
+
+            const file = fileInput.files[0];
+            resultsDiv.innerHTML = '<div class="card"><p style="text-align: center;">⏳ Парсинг PDF...</p></div>';
+
+            try {
+                // Читаем PDF
+                const arrayBuffer = await file.arrayBuffer();
+                const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+
+                // Извлекаем текст со всех страниц
+                let fullText = '';
+                for (let i = 1; i <= pdf.numPages; i++) {
+                    const page = await pdf.getPage(i);
+                    const textContent = await page.getTextContent();
+                    const pageText = textContent.items.map(item => item.str).join(' ');
+                    fullText += pageText + '\n';
+                }
+
+                // Ищем артикулы (форматы: 502-010601-209, E0027602, LD107309125, и т.д.)
+                // Артикулы обычно начинаются с цифры или буквы, содержат дефисы/цифры
+                const articleRegex = /\b([A-Z0-9]{3,}[-]?[0-9]{6,}[-]?[0-9]{0,3}|[A-Z][0-9]{7,}|LD[0-9]{9})\b/g;
+                const matches = fullText.match(articleRegex);
+
+                if (!matches || matches.length === 0) {
+                    resultsDiv.innerHTML = '<div class="card"><div class="alert alert-danger">❌ Не найдено ни одного артикула в PDF</div></div>';
+                    return;
+                }
+
+                // Убираем дубликаты
+                const uniqueArticles = [...new Set(matches)];
+
+                // Заполняем textarea и строим маршрут
+                document.getElementById('articles-input').value = uniqueArticles.join('\n');
+
+                resultsDiv.innerHTML = `<div class="card"><div class="alert alert-success">✅ Найдено ${uniqueArticles.length} уникальных артикулов</div></div>`;
+
+                // Автоматически строим маршрут
+                await generateRoute();
+
+            } catch (error) {
+                resultsDiv.innerHTML = `<div class="card"><div class="alert alert-danger">❌ Ошибка: ${error.message}</div></div>`;
+            }
+        }
+
         async function generateRoute() {
             const input = document.getElementById('articles-input').value.trim();
             const resultsDiv = document.getElementById('route-results');

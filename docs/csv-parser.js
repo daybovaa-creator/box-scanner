@@ -44,23 +44,29 @@ async function parseOzonCSV(file) {
     const lines = text.split('\n');
     const products = [];
 
-    // Ищем строку с заголовками
+    // Ищем строку с заголовками (строка 2: "Артикул,Ozon Product ID,Название товара,Штрихкод,...")
     let headerIndex = -1;
     for (let i = 0; i < Math.min(10, lines.length); i++) {
-        if (lines[i].includes('Артикул') && lines[i].includes('Наименование')) {
+        const line = lines[i];
+        if (line.includes('Артикул') && line.includes('Ozon Product ID') && line.includes('Название товара')) {
             headerIndex = i;
             break;
         }
     }
 
     if (headerIndex === -1) {
-        throw new Error('Не найдены заголовки в CSV файле от Ozon');
+        throw new Error('Не найдены заголовки в CSV файле от Ozon. Убедитесь что это файл "Штрихкоды товаров.csv"');
     }
 
-    // Парсим данные
+    // Парсим данные (начинаем с headerIndex + 4, чтобы пропустить служебные строки 3-5)
     for (let i = headerIndex + 1; i < lines.length; i++) {
         const line = lines[i].trim();
         if (!line) continue;
+
+        // Пропускаем служебные строки ("Нередактируемое", "Уникальный идентификатор")
+        if (line.includes('Нередактируемое') || line.includes('Уникальный идентификатор')) {
+            continue;
+        }
 
         const cols = parseCSVLine(line);
         if (cols.length < 4) continue;
@@ -70,9 +76,10 @@ async function parseOzonCSV(file) {
         const name = (cols[2] || '').trim();
         const barcode = (cols[3] || '').trim();
 
+        // Пропускаем пустые артикулы
         if (!article) continue;
 
-        // Конвертируем ID и штрихкод
+        // Конвертируем ID и штрихкод (убираем научную нотацию)
         let ozonIdStr = ozonId;
         if (ozonId && !isNaN(ozonId)) {
             ozonIdStr = String(parseInt(parseFloat(ozonId)));

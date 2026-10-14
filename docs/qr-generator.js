@@ -1,36 +1,40 @@
 // QR Code генерация в браузере
-// Используем библиотеку qrcodejs
+// Используем библиотеку qrcode-generator
 
 function generateQRCode(text, size = 300) {
     return new Promise((resolve, reject) => {
         try {
-            // Создаём временный div
-            const div = document.createElement('div');
-            div.style.display = 'none';
-            document.body.appendChild(div);
+            // Создаём QR-код (typeNumber=0 = auto, errorCorrectionLevel='H' = high)
+            const qr = qrcode(0, 'H');
+            qr.addData(text);
+            qr.make();
 
-            // Генерируем QR-код
-            const qr = new QRCode(div, {
-                text: text,
-                width: size,
-                height: size,
-                colorDark: '#000000',
-                colorLight: '#ffffff',
-                correctLevel: QRCode.CorrectLevel.H
-            });
+            // Создаём canvas
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
 
-            // Ждём генерации и берём canvas
-            setTimeout(() => {
-                const canvas = div.querySelector('canvas');
-                if (canvas) {
-                    const dataUrl = canvas.toDataURL('image/png');
-                    document.body.removeChild(div);
-                    resolve(dataUrl);
-                } else {
-                    document.body.removeChild(div);
-                    reject(new Error('QR-код не сгенерирован'));
+            const moduleCount = qr.getModuleCount();
+            const cellSize = Math.floor(size / moduleCount);
+            canvas.width = cellSize * moduleCount;
+            canvas.height = cellSize * moduleCount;
+
+            // Рисуем белый фон
+            ctx.fillStyle = '#FFFFFF';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Рисуем чёрные модули
+            ctx.fillStyle = '#000000';
+            for (let row = 0; row < moduleCount; row++) {
+                for (let col = 0; col < moduleCount; col++) {
+                    if (qr.isDark(row, col)) {
+                        ctx.fillRect(col * cellSize, row * cellSize, cellSize, cellSize);
+                    }
                 }
-            }, 100);
+            }
+
+            // Конвертируем в Data URL
+            const dataUrl = canvas.toDataURL('image/png');
+            resolve(dataUrl);
         } catch (error) {
             reject(error);
         }
@@ -60,6 +64,10 @@ function downloadQRCode(code, dataUrl) {
 }
 
 // Скачать все QR-коды как PDF (1 стикер 120×75 мм = 1 лист A4)
+// ========================================
+// КРУПНЫЙ НОМЕР СВЕРХУ + QR-КОД ПОД НИМ!
+// Сборщик видит номер коробки БЕЗ СКАНИРОВАНИЯ!
+// ========================================
 async function downloadQRCodesAsPDF(boxes) {
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF();
@@ -81,16 +89,19 @@ async function downloadQRCodesAsPDF(boxes) {
             doc.addPage();
         }
 
-        // КРУПНЫЙ НОМЕР КОРОБКИ СВЕРХУ (видно без сканирования!)
-        doc.setFontSize(32);
+        // ======================================
+        // КРУПНЫЙ НОМЕР КОРОБКИ СВЕРХУ!
+        // Сборщик видит номер БЕЗ СКАНИРОВАНИЯ!
+        // ======================================
+        doc.setFontSize(48);  // ← 48pt КРУПНЫЙ!
         doc.setFont('helvetica', 'bold');
-        const titleY = y + 15;
+        const titleY = y + 20;
         doc.text(box.code, x + stickerWidth / 2, titleY, { align: 'center' });
 
-        // QR-код под номером (35×35 мм, компактный)
-        const qrSize = 35;
+        // QR-код под номером (40×40 мм)
+        const qrSize = 40;
         const qrX = x + (stickerWidth - qrSize) / 2;
-        const qrY = titleY + 10;
+        const qrY = titleY + 12;
         doc.addImage(box.qr, 'PNG', qrX, qrY, qrSize, qrSize);
     }
 
