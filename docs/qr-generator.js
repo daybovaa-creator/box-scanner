@@ -65,10 +65,14 @@ function downloadQRCode(code, dataUrl) {
 
 // Скачать все QR-коды как PDF (1 стикер 120×75 мм = 1 лист A4)
 // ========================================
-// КРУПНЫЙ НОМЕР СВЕРХУ + QR-КОД ПОД НИМ!
+// КРУПНЫЙ НОМЕР СВЕРХУ + 2D ШТРИХКОД СНИЗУ!
 // Сборщик видит номер коробки БЕЗ СКАНИРОВАНИЯ!
 // ========================================
 async function downloadQRCodesAsPDF(boxes) {
+    console.log('=== downloadQRCodesAsPDF START ===');
+    console.log('Количество коробок:', boxes.length);
+    console.log('Первая коробка:', boxes[0]);
+
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF();
 
@@ -85,6 +89,8 @@ async function downloadQRCodesAsPDF(boxes) {
     for (let i = 0; i < boxes.length; i++) {
         const box = boxes[i];
 
+        console.log(`Коробка ${i + 1}: code="${box.code}", qr=${box.qr ? 'OK' : 'MISSING'}`);
+
         if (i > 0) {
             doc.addPage();
         }
@@ -93,18 +99,25 @@ async function downloadQRCodesAsPDF(boxes) {
         // КРУПНЫЙ НОМЕР КОРОБКИ СВЕРХУ!
         // Сборщик видит номер БЕЗ СКАНИРОВАНИЯ!
         // ======================================
-        doc.setFontSize(48);  // ← 48pt КРУПНЫЙ!
+        doc.setFontSize(64);  // ← 64pt КРУПНЕЙШИЙ!
         doc.setFont('helvetica', 'bold');
-        const titleY = y + 20;
-        doc.text(box.code, x + stickerWidth / 2, titleY, { align: 'center' });
 
-        // QR-код под номером (40×40 мм)
-        const qrSize = 40;
+        // Рисуем рамку стикера (для визуализации)
+        doc.setDrawColor(200, 200, 200);
+        doc.rect(x, y, stickerWidth, stickerHeight);
+
+        // НОМЕР В ЦЕНТРЕ ВЕРХНЕЙ ЧАСТИ
+        const textY = y + 25;
+        doc.text(box.code, x + stickerWidth / 2, textY, { align: 'center' });
+
+        // 2D штрихкод (QR) под номером
+        const qrSize = 45;
         const qrX = x + (stickerWidth - qrSize) / 2;
-        const qrY = titleY + 12;
+        const qrY = textY + 5;
         doc.addImage(box.qr, 'PNG', qrX, qrY, qrSize, qrSize);
     }
 
+    console.log('=== downloadQRCodesAsPDF END ===');
     doc.save('box-stickers-ozon-120x75.pdf');
 }
 
