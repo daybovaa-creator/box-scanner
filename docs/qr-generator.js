@@ -46,35 +46,42 @@ function downloadQRCode(code, dataUrl) {
     link.click();
 }
 
-// Скачать все QR-коды как PDF
+// Скачать все QR-коды как PDF (1 стикер 120×75 мм = 1 лист A4)
 async function downloadQRCodesAsPDF(boxes) {
-    // Используем jsPDF
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF();
 
-    let y = 20;
-    const pageHeight = doc.internal.pageSize.height;
+    // Стикер Ozon: 120×75 мм
+    const stickerWidth = 120;
+    const stickerHeight = 75;
+
+    // Центрируем на листе A4 (210×297 мм)
+    const pageWidth = 210;
+    const pageHeight = 297;
+    const x = (pageWidth - stickerWidth) / 2;
+    const y = (pageHeight - stickerHeight) / 2;
 
     for (let i = 0; i < boxes.length; i++) {
         const box = boxes[i];
 
-        // Новая страница если не влезает
-        if (y > pageHeight - 80) {
+        if (i > 0) {
             doc.addPage();
-            y = 20;
         }
 
-        // Добавляем QR-код
-        doc.addImage(box.qr, 'PNG', 20, y, 60, 60);
+        // КРУПНЫЙ НОМЕР КОРОБКИ СВЕРХУ (видно без сканирования!)
+        doc.setFontSize(32);
+        doc.setFont('helvetica', 'bold');
+        const titleY = y + 15;
+        doc.text(box.code, x + stickerWidth / 2, titleY, { align: 'center' });
 
-        // Добавляем текст
-        doc.setFontSize(16);
-        doc.text(box.code, 90, y + 30);
-
-        y += 70;
+        // QR-код под номером (35×35 мм, компактный)
+        const qrSize = 35;
+        const qrX = x + (stickerWidth - qrSize) / 2;
+        const qrY = titleY + 10;
+        doc.addImage(box.qr, 'PNG', qrX, qrY, qrSize, qrSize);
     }
 
-    doc.save('box-qr-codes.pdf');
+    doc.save('box-stickers-ozon-120x75.pdf');
 }
 
 window.QRGenerator = {
