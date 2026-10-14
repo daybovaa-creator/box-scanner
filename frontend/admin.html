@@ -65,7 +65,16 @@
         </main>
     </div>
 
-    <script src="app.js"></script>
+    <!-- Библиотеки -->
+    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+
+    <!-- Наши модули -->
+    <script src="db.js"></script>
+    <script src="csv-parser.js"></script>
+    <script src="qr-generator.js"></script>
+
     <script>
         // Загрузка файла от поставщика
         async function uploadSupplierFile() {
@@ -74,21 +83,45 @@
             const file = fileInput.files[0];
 
             if (!file) {
-                Utils.showAlert('Выберите файл', 'warning');
+                alert('Выберите файл');
                 return;
             }
 
-            Utils.setLoading('upload-supplier-btn', true);
+            const btn = document.getElementById('upload-supplier-btn');
+            btn.disabled = true;
+            btn.textContent = '⏳ Загрузка...';
             resultDiv.innerHTML = '';
 
             try {
-                const result = await API.uploadFile('/api/products/upload/supplier', file);
+                const products = await CSVParser.parseSupplier(file);
+
+                let created = 0;
+                let updated = 0;
+
+                for (const product of products) {
+                    const existing = await DB.products.getByArticle(product.article);
+                    if (existing) {
+                        // Обновляем существующий
+                        await DB.products.add({
+                            ...existing,
+                            ...product,
+                            name: product.name || existing.name,
+                            barcode_manufacturer: product.barcode_manufacturer || existing.barcode_manufacturer
+                        });
+                        updated++;
+                    } else {
+                        // Создаём новый
+                        await DB.products.add(product);
+                        created++;
+                    }
+                }
+
                 resultDiv.innerHTML = `
                     <div class="alert alert-success" style="margin-top: 1rem;">
                         ✅ Загружено успешно!<br>
-                        Создано новых: ${result.created}<br>
-                        Обновлено: ${result.updated}<br>
-                        Всего обработано: ${result.total}
+                        Создано новых: ${created}<br>
+                        Обновлено: ${updated}<br>
+                        Всего обработано: ${products.length}
                     </div>
                 `;
                 loadStats();
@@ -99,7 +132,8 @@
                     </div>
                 `;
             } finally {
-                Utils.setLoading('upload-supplier-btn', false);
+                btn.disabled = false;
+                btn.textContent = '📤 Загрузить';
             }
         }
 
@@ -110,21 +144,46 @@
             const file = fileInput.files[0];
 
             if (!file) {
-                Utils.showAlert('Выберите файл', 'warning');
+                alert('Выберите файл');
                 return;
             }
 
-            Utils.setLoading('upload-ozon-btn', true);
+            const btn = document.getElementById('upload-ozon-btn');
+            btn.disabled = true;
+            btn.textContent = '⏳ Загрузка...';
             resultDiv.innerHTML = '';
 
             try {
-                const result = await API.uploadFile('/api/products/upload/ozon', file);
+                const products = await CSVParser.parseOzon(file);
+
+                let created = 0;
+                let updated = 0;
+
+                for (const product of products) {
+                    const existing = await DB.products.getByArticle(product.article);
+                    if (existing) {
+                        // Обновляем существующий
+                        await DB.products.add({
+                            ...existing,
+                            ...product,
+                            name: product.name || existing.name,
+                            barcode_ozon: product.barcode_ozon || existing.barcode_ozon,
+                            ozon_id: product.ozon_id || existing.ozon_id
+                        });
+                        updated++;
+                    } else {
+                        // Создаём новый
+                        await DB.products.add(product);
+                        created++;
+                    }
+                }
+
                 resultDiv.innerHTML = `
                     <div class="alert alert-success" style="margin-top: 1rem;">
                         ✅ Загружено успешно!<br>
-                        Создано новых: ${result.created}<br>
-                        Обновлено: ${result.updated}<br>
-                        Всего обработано: ${result.total}
+                        Создано новых: ${created}<br>
+                        Обновлено: ${updated}<br>
+                        Всего обработано: ${products.length}
                     </div>
                 `;
                 loadStats();
@@ -135,7 +194,8 @@
                     </div>
                 `;
             } finally {
-                Utils.setLoading('upload-ozon-btn', false);
+                btn.disabled = false;
+                btn.textContent = '📤 Загрузить';
             }
         }
 
@@ -146,27 +206,53 @@
             const qrGrid = document.getElementById('qr-codes-grid');
 
             if (count < 1 || count > 1000) {
-                Utils.showAlert('Количество должно быть от 1 до 1000', 'warning');
+                alert('Количество должно быть от 1 до 1000');
                 return;
             }
 
-            Utils.setLoading('generate-boxes-btn', true);
+            const btn = document.getElementById('generate-boxes-btn');
+            btn.disabled = true;
+            btn.textContent = '⏳ Создание...';
             resultDiv.innerHTML = '';
             qrGrid.innerHTML = '';
 
             try {
-                const result = await API.call(`/api/boxes/generate/${count}`, {
-                    method: 'POST'
-                });
+                // Получаем текущее количество коробок
+                const existingBoxes = await DB.boxes.getAll();
+                const startNum = existingBoxes.length + 1;
+
+                const boxes = [];
+
+                // Создаём коробки с QR-кодами
+                for (let i = 0; i < count; i++) {
+                    const boxNum = String(startNum + i).padStart(3, '0');
+                    const code = `BOX-${boxNum}`;
+
+                    // Создаём коробку в БД
+                    await DB.boxes.create(code);
+
+                    // Генерируем QR-код
+                    const qrDataUrl = await QRGenerator.generate(code);
+
+                    boxes.push({ code, qr: qrDataUrl });
+
+                    // Показываем прогресс
+                    if ((i + 1) % 10 === 0 || i === count - 1) {
+                        btn.textContent = `⏳ ${i + 1} / ${count}`;
+                    }
+                }
 
                 resultDiv.innerHTML = `
                     <div class="alert alert-success" style="margin-top: 1rem;">
-                        ✅ Создано ${result.count} коробок!
+                        ✅ Создано ${count} коробок!
+                        <button onclick="downloadAllQR()" class="btn btn-primary" style="margin-top: 0.5rem;">
+                            📥 Скачать все QR-коды (PDF)
+                        </button>
                     </div>
                 `;
 
                 // Показываем QR-коды
-                result.boxes.forEach(box => {
+                boxes.forEach(box => {
                     const qrCard = document.createElement('div');
                     qrCard.style.textAlign = 'center';
                     qrCard.style.padding = '1rem';
@@ -175,10 +261,16 @@
                     qrCard.style.border = '2px solid #e2e8f0';
                     qrCard.innerHTML = `
                         <h3 style="margin-bottom: 0.5rem;">${box.code}</h3>
-                        <img src="${box.qr_code}" alt="${box.code}" style="width: 100%; max-width: 150px;">
+                        <img src="${box.qr}" alt="${box.code}" style="width: 100%; max-width: 150px;">
+                        <button onclick="QRGenerator.download('${box.code}', '${box.qr}')" class="btn btn-sm btn-secondary" style="margin-top: 0.5rem;">
+                            💾 Скачать
+                        </button>
                     `;
                     qrGrid.appendChild(qrCard);
                 });
+
+                // Сохраняем для скачивания PDF
+                window.generatedBoxes = boxes;
 
                 loadStats();
             } catch (error) {
@@ -188,7 +280,22 @@
                     </div>
                 `;
             } finally {
-                Utils.setLoading('generate-boxes-btn', false);
+                btn.disabled = false;
+                btn.textContent = '🎯 Создать коробки';
+            }
+        }
+
+        // Скачать все QR-коды в PDF
+        async function downloadAllQR() {
+            if (!window.generatedBoxes || window.generatedBoxes.length === 0) {
+                alert('Нет сгенерированных коробок');
+                return;
+            }
+
+            try {
+                await QRGenerator.downloadPDF(window.generatedBoxes);
+            } catch (error) {
+                alert('Ошибка создания PDF: ' + error.message);
             }
         }
 
@@ -197,21 +304,30 @@
             const statsDiv = document.getElementById('stats-content');
 
             try {
-                const [products, boxes] = await Promise.all([
-                    API.call('/api/products?limit=1000'),
-                    API.call('/api/boxes?limit=1000')
+                const [productsCount, boxesCount] = await Promise.all([
+                    DB.products.count(),
+                    DB.boxes.count()
                 ]);
 
                 statsDiv.innerHTML = `
                     <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
                         <div style="text-align: center; padding: 1rem; background: #dbeafe; border-radius: 8px;">
-                            <div style="font-size: 2rem; font-weight: 600; color: #2563eb;">${products.length}</div>
+                            <div style="font-size: 2rem; font-weight: 600; color: #2563eb;">${productsCount}</div>
                             <div>Товаров в базе</div>
                         </div>
                         <div style="text-align: center; padding: 1rem; background: #d1fae5; border-radius: 8px;">
-                            <div style="font-size: 2rem; font-weight: 600; color: #10b981;">${boxes.length}</div>
+                            <div style="font-size: 2rem; font-weight: 600; color: #10b981;">${boxesCount}</div>
                             <div>Коробок создано</div>
                         </div>
+                    </div>
+                    <div style="margin-top: 1rem; text-align: center;">
+                        <button onclick="exportDB()" class="btn btn-secondary" style="margin-right: 0.5rem;">
+                            📤 Экспорт БД
+                        </button>
+                        <button onclick="importDB()" class="btn btn-secondary">
+                            📥 Импорт БД
+                        </button>
+                        <input type="file" id="import-file" accept=".json" style="display: none;" onchange="handleImportFile()">
                     </div>
                 `;
             } catch (error) {
@@ -219,8 +335,52 @@
             }
         }
 
-        // Загружаем статистику при открытии страницы
-        loadStats();
+        // Экспорт БД
+        async function exportDB() {
+            try {
+                const data = await DB.export();
+                const blob = new Blob([data], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = `box-scanner-backup-${new Date().toISOString().slice(0, 10)}.json`;
+                link.click();
+                URL.revokeObjectURL(url);
+                alert('✅ БД экспортирована успешно!');
+            } catch (error) {
+                alert('❌ Ошибка экспорта: ' + error.message);
+            }
+        }
+
+        // Импорт БД
+        function importDB() {
+            document.getElementById('import-file').click();
+        }
+
+        async function handleImportFile() {
+            const fileInput = document.getElementById('import-file');
+            const file = fileInput.files[0];
+            if (!file) return;
+
+            try {
+                const text = await file.text();
+                const result = await DB.import(text);
+                alert(`✅ Импорт успешен!\nТоваров: ${result.products}\nКоробок: ${result.boxes}\nПозиций: ${result.items}`);
+                loadStats();
+            } catch (error) {
+                alert('❌ Ошибка импорта: ' + error.message);
+            }
+        }
+
+        // Инициализация БД и загрузка статистики
+        (async () => {
+            try {
+                await DB.init();
+                loadStats();
+            } catch (error) {
+                alert('Ошибка инициализации БД: ' + error.message);
+            }
+        })();
     </script>
 </body>
 </html>
