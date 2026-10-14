@@ -62,6 +62,16 @@
                     <p>Загрузка...</p>
                 </div>
             </div>
+
+            <!-- Очистка базы данных -->
+            <div class="card">
+                <div class="card-header" style="background: var(--danger); color: white;">🗑️ Очистить всё</div>
+                <p>⚠️ Удаляет ВСЕ коробки, товары и содержимое из базы данных!</p>
+                <button onclick="clearAllData()" class="btn" style="background: var(--danger); color: white; width: 100%;">
+                    🗑️ Очистить всю базу данных
+                </button>
+                <div id="clear-result"></div>
+            </div>
         </main>
     </div>
 
@@ -369,6 +379,31 @@
                 loadStats();
             } catch (error) {
                 alert('❌ Ошибка импорта: ' + error.message);
+            }
+        }
+
+        // Очистка всей базы данных
+        async function clearAllData() {
+            const resultDiv = document.getElementById('clear-result');
+
+            if (!confirm('⚠️ ВЫ УВЕРЕНЫ? Это удалит ВСЕ товары, коробки и содержимое!')) {
+                return;
+            }
+
+            if (!confirm('⚠️ ПОСЛЕДНЕЕ ПРЕДУПРЕЖДЕНИЕ! Все данные будут удалены безвозвратно!')) {
+                return;
+            }
+
+            try {
+                await DB.clear();
+                resultDiv.innerHTML = '<div class="alert alert-success" style="margin-top: 1rem;">✅ База данных очищена! Обновите страницу.</div>';
+
+                // Обновляем статистику
+                setTimeout(() => {
+                    window.location.reload();
+                }, 2000);
+            } catch (error) {
+                resultDiv.innerHTML = `<div class="alert alert-danger" style="margin-top: 1rem;">❌ Ошибка: ${error.message}</div>`;
             }
         }
 
