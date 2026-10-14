@@ -3,230 +3,64 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Сборка заказов - Box Scanner</title>
+    <title>Сборка - Box Scanner</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
     <div class="container">
         <header>
-            <h1>📋 Сборка заказов</h1>
+            <h1>📋 Сборочный лист</h1>
             <a href="index.html" class="btn btn-secondary">← Назад</a>
         </header>
-
         <main>
-            <!-- Создание нового сборочного листа -->
-            <div class="card" id="create-section">
-                <div class="card-header">Новый сборочный лист</div>
-
+            <div class="card">
+                <div class="card-header">Вставьте артикулы из Ozon</div>
+                <p>Скопируйте артикулы из сборочного листа и вставьте сюда (по одному на строку):</p>
                 <div class="form-group">
-                    <label>Название сборочного листа:</label>
-                    <input type="text" id="assembly-name" class="form-control" placeholder="Например: Сборка 14.10.2026">
+                    <textarea id="articles-input" class="form-control" rows="10" placeholder="СС5-00001&#10;СС5-00002&#10;СС5-00003"></textarea>
                 </div>
-
-                <div class="form-group">
-                    <label>Вставьте артикулы из сборочного листа Ozon:</label>
-                    <p style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 0.5rem;">
-                        Каждый артикул с новой строки. Можно вставить из PDF или ввести вручную.
-                    </p>
-                    <textarea id="articles-input" class="form-control" rows="10" placeholder="502-010601-209&#10;E0027602&#10;24121001&#10;..."></textarea>
-                </div>
-
-                <button onclick="createAssemblyList()" id="create-btn" class="btn btn-success" style="width: 100%;">
-                    📥 Создать сборочный лист
-                </button>
+                <button onclick="generateRoute()" class="btn btn-primary" style="width: 100%;">🗺️ Построить маршрут</button>
             </div>
-
-            <!-- Маршрут сборки -->
-            <div id="route-section" style="display: none;">
-                <div class="card">
-                    <div class="card-header">
-                        <span id="route-title">Маршрут сборки</span>
-                        <button onclick="resetAssembly()" class="btn btn-secondary" style="float: right;">
-                            Новый сборочный лист
-                        </button>
-                    </div>
-
-                    <div id="route-boxes"></div>
-
-                    <!-- Не найденные товары -->
-                    <div id="not-found-section" style="display: none;">
-                        <h3 style="color: var(--danger); margin-top: 2rem;">❌ Товары не найдены:</h3>
-                        <ul id="not-found-list" style="list-style: none; padding: 0;">
-                        </ul>
-                    </div>
-                </div>
-            </div>
+            <div id="route-results"></div>
         </main>
     </div>
-
-    <script src="app.js"></script>
+    <script src="db.js"></script>
     <script>
-        let currentAssemblyId = null;
-
-        // Создать сборочный лист
-        async function createAssemblyList() {
-            const name = document.getElementById('assembly-name').value.trim();
-            const articlesText = document.getElementById('articles-input').value.trim();
-
-            if (!name) {
-                Utils.showAlert('Введите название сборочного листа', 'warning');
-                return;
-            }
-
-            if (!articlesText) {
-                Utils.showAlert('Введите артикулы', 'warning');
-                return;
-            }
-
-            // Парсим артикулы
-            const articles = Utils.parseArticles(articlesText);
-            if (articles.length === 0) {
-                Utils.showAlert('Не удалось распознать артикулы', 'warning');
-                return;
-            }
-
-            Utils.setLoading('create-btn', true);
-
+        (async () => { await DB.init(); })();
+        async function generateRoute() {
+            const input = document.getElementById('articles-input').value.trim();
+            const resultsDiv = document.getElementById('route-results');
+            if (!input) { alert('Вставьте артикулы'); return; }
+            resultsDiv.innerHTML = '<div class="card"><p style="text-align: center;">⏳ Построение маршрута...</p></div>';
             try {
-                // Создаём сборочный лист
-                const assembly = await API.call('/api/assembly', {
-                    method: 'POST',
-                    body: JSON.stringify({ name: name })
-                });
-
-                currentAssemblyId = assembly.id;
-
-                // Добавляем товары
-                const items = articles.map((article, index) => ({
-                    article: article,
-                    quantity_needed: 1,
-                    ozon_label: null  // Можно расширить функционал и парсить этикетки из PDF
-                }));
-
-                await API.call(`/api/assembly/${assembly.id}/items`, {
-                    method: 'POST',
-                    body: JSON.stringify(items)
-                });
-
-                // Получаем маршрут сборки
-                const route = await API.call(`/api/assembly/${assembly.id}/route`);
-
-                // Показываем маршрут
-                displayRoute(route, name);
-
-            } catch (error) {
-                Utils.showAlert(error.message, 'danger');
-            } finally {
-                Utils.setLoading('create-btn', false);
-            }
-        }
-
-        // Отобразить маршрут сборки
-        function displayRoute(route, assemblyName) {
-            document.getElementById('create-section').style.display = 'none';
-            document.getElementById('route-section').style.display = 'block';
-            document.getElementById('route-title').textContent = assemblyName;
-
-            const routeBoxes = document.getElementById('route-boxes');
-            routeBoxes.innerHTML = '';
-
-            if (route.boxes.length === 0) {
-                routeBoxes.innerHTML = `
-                    <div class="alert alert-warning">
-                        ⚠️ Ни один товар не найден в коробках
-                    </div>
-                `;
-            } else {
-                route.boxes.forEach((box, index) => {
-                    const boxCard = document.createElement('div');
-                    boxCard.className = 'route-box';
-
-                    let itemsHtml = '';
-                    box.items.forEach(item => {
-                        itemsHtml += `
-                            <div class="route-item">
-                                <div style="display: flex; justify-content: space-between; align-items: center;">
-                                    <div style="flex: 1;">
-                                        <div style="font-weight: 600; color: var(--primary);">
-                                            📦 ${item.article}
-                                        </div>
-                                        <div style="font-size: 0.9rem; color: var(--text-muted); margin-top: 0.25rem;">
-                                            ${item.name}
-                                        </div>
-                                    </div>
-                                    <div style="text-align: right; margin-left: 1rem;">
-                                        <div style="font-weight: 600;">${item.quantity_in_box} шт</div>
-                                        ${item.ozon_label ? `<div style="font-size: 0.9rem; color: var(--text-muted);">→ ${item.ozon_label}</div>` : ''}
-                                    </div>
-                                </div>
-                            </div>
-                        `;
+                const articles = input.split('\n').map(line => line.trim()).filter(line => line.length > 0);
+                if (articles.length === 0) { alert('Не найдено ни одного артикула'); return; }
+                const route = new Map(), notFound = [], notPlaced = [];
+                for (const article of articles) {
+                    const product = await DB.products.getByArticle(article);
+                    if (!product) { notFound.push(article); continue; }
+                    const boxes = await DB.search.findBoxesByProduct(product.id);
+                    if (boxes.length === 0) { notPlaced.push({article, name: product.name}); continue; }
+                    const boxItem = boxes[0], boxCode = boxItem.box.code;
+                    if (!route.has(boxCode)) route.set(boxCode, {box: boxItem.box, items: []});
+                    route.get(boxCode).items.push({product: product, available: boxItem.quantity, needed: 1});
+                }
+                let html = '';
+                if (route.size > 0) {
+                    const routeArray = Array.from(route.entries());
+                    html += `<div class="card"><div class="card-header" style="background: var(--success); color: white;">✅ Маршрут сборки (${routeArray.length} коробок)</div><div style="padding: 1rem;"><p><strong>Всего позиций:</strong> ${routeArray.reduce((sum, [_, data]) => sum + data.items.length, 0)}</p></div></div>`;
+                    routeArray.forEach(([boxCode, data], index) => {
+                        const totalNeeded = data.items.reduce((sum, item) => sum + item.needed, 0);
+                        html += `<div class="card"><div class="card-header" style="background: #3b82f6; color: white;">${index + 1}. Коробка ${boxCode}</div><ul class="items-list" style="margin: 0;">${data.items.map(item => `<li><div><div style="font-weight: 600;">${item.product.article}</div><div style="font-size: 0.9rem; color: var(--text-muted);">${item.product.name}</div><div style="font-size: 0.85rem; color: var(--text-muted);">В коробке: ${item.available} шт.</div></div><div style="font-weight: 600; color: var(--primary); font-size: 1.2rem;">✓ ${item.needed} шт.</div></li>`).join('')}</ul><div style="padding: 1rem; text-align: center; background: var(--bg-secondary); border-top: 1px solid var(--border);"><strong>${data.items.length} позиций</strong> (${totalNeeded} шт.)</div></div>`;
                     });
-
-                    boxCard.innerHTML = `
-                        <div class="route-box-header">
-                            ${index + 1}. ${box.box_code} (${box.items.length} ${pluralize(box.items.length, 'позиция', 'позиции', 'позиций')})
-                        </div>
-                        ${itemsHtml}
-                        <a href="box.html?code=${box.box_code}" class="btn btn-primary" style="width: 100%; margin-top: 1rem;">
-                            📦 Открыть коробку
-                        </a>
-                    `;
-
-                    routeBoxes.appendChild(boxCard);
-                });
-            }
-
-            // Не найденные товары
-            if (route.not_found.length > 0) {
-                document.getElementById('not-found-section').style.display = 'block';
-                const notFoundList = document.getElementById('not-found-list');
-                notFoundList.innerHTML = '';
-
-                route.not_found.forEach(article => {
-                    const li = document.createElement('li');
-                    li.style.padding = '0.75rem';
-                    li.style.background = '#fee2e2';
-                    li.style.borderRadius = '8px';
-                    li.style.marginBottom = '0.5rem';
-                    li.style.border = '2px solid var(--danger)';
-                    li.textContent = article;
-                    notFoundList.appendChild(li);
-                });
-            } else {
-                document.getElementById('not-found-section').style.display = 'none';
+                }
+                if (notPlaced.length > 0) html += `<div class="card"><div class="card-header" style="background: var(--warning); color: white;">⚠️ Не размещены (${notPlaced.length})</div><ul class="items-list" style="margin: 0;">${notPlaced.map(item => `<li><div><div style="font-weight: 600;">${item.article}</div><div style="font-size: 0.9rem; color: var(--text-muted);">${item.name}</div></div><div style="color: var(--warning);">🔍</div></li>`).join('')}</ul></div>`;
+                if (notFound.length > 0) html += `<div class="card"><div class="card-header" style="background: var(--danger); color: white;">❌ Не найдены в базе (${notFound.length})</div><ul class="items-list" style="margin: 0;">${notFound.map(article => `<li><div style="font-weight: 600;">${article}</div><div style="color: var(--danger);">❌</div></li>`).join('')}</ul></div>`;
+                resultsDiv.innerHTML = html;
+            } catch (error) {
+                resultsDiv.innerHTML = `<div class="card"><div class="alert alert-danger">❌ Ошибка: ${error.message}</div></div>`;
             }
         }
-
-        // Сброс (создать новый сборочный лист)
-        function resetAssembly() {
-            document.getElementById('route-section').style.display = 'none';
-            document.getElementById('create-section').style.display = 'block';
-            document.getElementById('assembly-name').value = '';
-            document.getElementById('articles-input').value = '';
-            currentAssemblyId = null;
-        }
-
-        // Склонение числительных
-        function pluralize(count, one, few, many) {
-            const mod10 = count % 10;
-            const mod100 = count % 100;
-
-            if (mod10 === 1 && mod100 !== 11) {
-                return one;
-            } else if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) {
-                return few;
-            } else {
-                return many;
-            }
-        }
-
-        // Автозаполнение названия (текущая дата)
-        window.addEventListener('load', () => {
-            const now = new Date();
-            const dateStr = now.toLocaleDateString('ru-RU');
-            document.getElementById('assembly-name').value = `Сборка ${dateStr}`;
-        });
     </script>
 </body>
 </html>
