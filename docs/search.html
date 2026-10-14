@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Поиск товара - Box Scanner</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🔍 Поиск товара</h1>
+            <a href="index.html" class="btn btn-secondary">← Назад</a>
+        </header>
+
+        <main>
+            <div class="card">
+                <div class="card-header">Отсканируйте штрихкод товара</div>
+                <p style="text-align: center; color: var(--text-muted);">
+                    Сканируйте ШК производителя (с товара) или ШК Ozon (из ЛК)
+                </p>
+
+                <div id="barcode-reader" style="width: 100%; max-width: 500px; margin: 1rem auto;"></div>
+
+                <div class="form-group">
+                    <label>Или введите штрихкод вручную:</label>
+                    <input type="text" id="manual-barcode" class="form-control" placeholder="Введите ШК">
+                </div>
+
+                <button onclick="searchProduct()" class="btn btn-primary" style="width: 100%;">
+                    🔍 Найти товар
+                </button>
+            </div>
+
+            <!-- Результаты поиска -->
+            <div id="search-results" style="display: none;">
+                <!-- Информация о товаре -->
+                <div class="card">
+                    <div class="card-header">✅ Товар найден</div>
+                    <div style="padding: 1rem; background: var(--bg); border-radius: 8px; margin-bottom: 1rem;">
+                        <div style="margin-bottom: 0.5rem;">
+                            <strong>Артикул:</strong> <span id="result-article" style="color: var(--primary); font-weight: 600;"></span>
+                        </div>
+                        <div style="margin-bottom: 0.5rem;">
+                            <strong>Название:</strong> <span id="result-name"></span>
+                        </div>
+                        <div style="margin-bottom: 0.5rem;" id="result-barcode-mfr-row">
+                            <strong>ШК производителя:</strong> <span id="result-barcode-mfr"></span>
+                        </div>
+                        <div id="result-barcode-ozon-row">
+                            <strong>ШК Ozon:</strong> <span id="result-barcode-ozon"></span>
+                        </div>
+                    </div>
+
+                    <!-- Местоположение -->
+                    <h3 style="margin-bottom: 1rem;">📍 Местоположение:</h3>
+                    <div id="locations-list"></div>
+                </div>
+            </div>
+
+            <!-- Товар не найден -->
+            <div id="not-found" style="display: none;">
+                <div class="alert alert-danger">
+                    ❌ Товар с таким штрихкодом не найден в системе
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="app.js"></script>
+    <script>
+        let barcodeScanner = null;
+
+        // Инициализация сканера
+        function initBarcodeScanner() {
+            barcodeScanner = new Html5Qrcode("barcode-reader");
+
+            barcodeScanner.start(
+                { facingMode: "environment" },
+                {
+                    fps: 10,
+                    qrbox: { width: 250, height: 250 }
+                },
+                (decodedText) => {
+                    document.getElementById('manual-barcode').value = decodedText;
+                    searchProduct();
+                }
+            ).catch(err => {
+                console.log("Barcode Scanner error:", err);
+            });
+        }
+
+        // Поиск товара
+        async function searchProduct() {
+            const barcode = document.getElementById('manual-barcode').value.trim();
+            if (!barcode) {
+                Utils.showAlert('Введите штрихкод', 'warning');
+                return;
+            }
+
+            // Скрываем предыдущие результаты
+            document.getElementById('search-results').style.display = 'none';
+            document.getElementById('not-found').style.display = 'none';
+
+            try {
+                const result = await API.call(`/api/products/search?barcode=${encodeURIComponent(barcode)}`);
+
+                // Показываем информацию о товаре
+                document.getElementById('result-article').textContent = result.product.article;
+                document.getElementById('result-name').textContent = result.product.name;
+
+                // ШК производителя
+                if (result.product.barcode_manufacturer) {
+                    document.getElementById('result-barcode-mfr').textContent = result.product.barcode_manufacturer;
+                    document.getElementById('result-barcode-mfr-row').style.display = 'block';
+                } else {
+                    document.getElementById('result-barcode-mfr-row').style.display = 'none';
+                }
+
+                // ШК Ozon
+                if (result.product.barcode_ozon) {
+                    document.getElementById('result-barcode-ozon').textContent = result.product.barcode_ozon;
+                    document.getElementById('result-barcode-ozon-row').style.display = 'block';
+                } else {
+                    document.getElementById('result-barcode-ozon-row').style.display = 'none';
+                }
+
+                // Местоположение
+                const locationsList = document.getElementById('locations-list');
+                locationsList.innerHTML = '';
+
+                if (result.locations.length === 0) {
+                    locationsList.innerHTML = `
+                        <div style="text-align: center; padding: 2rem; background: #fef3c7; border-radius: 8px; border: 2px solid var(--warning);">
+                            ⚠️ Товар не добавлен ни в одну коробку
+                        </div>
+                    `;
+                } else {
+                    result.locations.forEach(loc => {
+                        const locDiv = document.createElement('div');
+                        locDiv.style.padding = '1rem';
+                        locDiv.style.background = 'var(--bg)';
+                        locDiv.style.borderRadius = '8px';
+                        locDiv.style.marginBottom = '0.5rem';
+                        locDiv.style.display = 'flex';
+                        locDiv.style.justifyContent = 'space-between';
+                        locDiv.style.alignItems = 'center';
+                        locDiv.innerHTML = `
+                            <div>
+                                <div style="font-size: 1.25rem; font-weight: 600; color: var(--primary);">
+                                    🎯 ${loc.box_code}
+                                </div>
+                                <div style="color: var(--text-muted);">${loc.quantity} шт</div>
+                            </div>
+                            <a href="box.html?code=${loc.box_code}" class="btn btn-primary">
+                                Открыть коробку →
+                            </a>
+                        `;
+                        locationsList.appendChild(locDiv);
+                    });
+                }
+
+                document.getElementById('search-results').style.display = 'block';
+
+            } catch (error) {
+                document.getElementById('not-found').style.display = 'block';
+            }
+        }
+
+        // Инициализация при загрузке
+        window.addEventListener('load', () => {
+            initBarcodeScanner();
+
+            // Проверяем есть ли штрихкод в URL
+            const barcode = Utils.getQueryParam('barcode');
+            if (barcode) {
+                document.getElementById('manual-barcode').value = barcode;
+                searchProduct();
+            }
+        });
+    </script>
+</body>
+</html>
