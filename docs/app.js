@@ -1,5 +1,6 @@
 // API Configuration
-const API_BASE = 'http://localhost:8000';
+// Измени на адрес своего сервера после деплоя backend
+const API_BASE = 'http://localhost:8000';  // TODO: заменить на https://your-server.com
 
 // API Helper Functions
 async function apiCall(endpoint, options = {}) {
