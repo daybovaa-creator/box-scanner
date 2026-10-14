@@ -219,7 +219,7 @@
             try {
                 // Получаем текущее количество коробок
                 const existingBoxes = await DB.boxes.getAll();
-                const startNum = existingBoxes.length + 1;
+                const startNum = (existingBoxes || []).length + 1;
 
                 const boxes = [];
 
