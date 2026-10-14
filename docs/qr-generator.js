@@ -1,26 +1,39 @@
 // QR Code генерация в браузере
-// Используем библиотеку qrcode.js
+// Используем библиотеку qrcodejs
 
 function generateQRCode(text, size = 300) {
     return new Promise((resolve, reject) => {
-        // Создаём временный canvas
-        const canvas = document.createElement('canvas');
+        try {
+            // Создаём временный div
+            const div = document.createElement('div');
+            div.style.display = 'none';
+            document.body.appendChild(div);
 
-        // Используем библиотеку QRCode
-        QRCode.toCanvas(canvas, text, {
-            width: size,
-            margin: 2,
-            errorCorrectionLevel: 'H'
-        }, (error) => {
-            if (error) {
-                reject(error);
-                return;
-            }
+            // Генерируем QR-код
+            const qr = new QRCode(div, {
+                text: text,
+                width: size,
+                height: size,
+                colorDark: '#000000',
+                colorLight: '#ffffff',
+                correctLevel: QRCode.CorrectLevel.H
+            });
 
-            // Конвертируем в base64
-            const dataUrl = canvas.toDataURL('image/png');
-            resolve(dataUrl);
-        });
+            // Ждём генерации и берём canvas
+            setTimeout(() => {
+                const canvas = div.querySelector('canvas');
+                if (canvas) {
+                    const dataUrl = canvas.toDataURL('image/png');
+                    document.body.removeChild(div);
+                    resolve(dataUrl);
+                } else {
+                    document.body.removeChild(div);
+                    reject(new Error('QR-код не сгенерирован'));
+                }
+            }, 100);
+        } catch (error) {
+            reject(error);
+        }
     });
 }
 
