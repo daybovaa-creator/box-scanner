@@ -62,21 +62,11 @@
                     <p>Загрузка...</p>
                 </div>
             </div>
-
-            <!-- Очистка базы данных -->
-            <div class="card">
-                <div class="card-header" style="background: var(--danger); color: white;">🗑️ Очистить всё</div>
-                <p>⚠️ Удаляет ВСЕ коробки, товары и содержимое из базы данных!</p>
-                <button onclick="clearAllData()" class="btn" style="background: var(--danger); color: white; width: 100%;">
-                    🗑️ Очистить всю базу данных
-                </button>
-                <div id="clear-result"></div>
-            </div>
         </main>
     </div>
 
     <!-- Библиотеки -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 
@@ -229,7 +219,7 @@
             try {
                 // Получаем текущее количество коробок
                 const existingBoxes = await DB.boxes.getAll();
-                const startNum = (existingBoxes || []).length + 1;
+                const startNum = existingBoxes.length + 1;
 
                 const boxes = [];
 
@@ -255,9 +245,14 @@
                 resultDiv.innerHTML = `
                     <div class="alert alert-success" style="margin-top: 1rem;">
                         ✅ Создано ${count} коробок!
-                        <button onclick="downloadAllQR()" class="btn btn-primary" style="margin-top: 0.5rem;">
-                            📥 Скачать все QR-коды (PDF)
-                        </button>
+                        <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.5rem;">
+                            <button onclick="downloadAllQR()" class="btn btn-primary">
+                                📥 Скачать PDF
+                            </button>
+                            <button onclick="downloadAllHTML()" class="btn btn-success">
+                                🖨️ Предпросмотр этикеток (HTML)
+                            </button>
+                        </div>
                     </div>
                 `;
 
@@ -382,31 +377,6 @@
             }
         }
 
-        // Очистка всей базы данных
-        async function clearAllData() {
-            const resultDiv = document.getElementById('clear-result');
-
-            if (!confirm('⚠️ ВЫ УВЕРЕНЫ? Это удалит ВСЕ товары, коробки и содержимое!')) {
-                return;
-            }
-
-            if (!confirm('⚠️ ПОСЛЕДНЕЕ ПРЕДУПРЕЖДЕНИЕ! Все данные будут удалены безвозвратно!')) {
-                return;
-            }
-
-            try {
-                await DB.clear();
-                resultDiv.innerHTML = '<div class="alert alert-success" style="margin-top: 1rem;">✅ База данных очищена! Обновите страницу.</div>';
-
-                // Обновляем статистику
-                setTimeout(() => {
-                    window.location.reload();
-                }, 2000);
-            } catch (error) {
-                resultDiv.innerHTML = `<div class="alert alert-danger" style="margin-top: 1rem;">❌ Ошибка: ${error.message}</div>`;
-            }
-        }
-
         // Инициализация БД и загрузка статистики
         (async () => {
             try {
@@ -416,6 +386,36 @@
                 alert('Ошибка инициализации БД: ' + error.message);
             }
         })();
+
+        // ✅ НОВАЯ ФУНКЦИЯ: Скачать HTML предпросмотр этикеток
+        async function downloadAllHTML() {
+            if (!window.generatedBoxes || window.generatedBoxes.length === 0) {
+                alert('Нет сгенерированных коробок');
+                return;
+            }
+
+            try {
+                await QRGenerator.downloadHTML(window.generatedBoxes);
+                alert('✅ HTML файл скачан! Открой его в браузере и нажми Ctrl+P для печати');
+            } catch (error) {
+                alert('Ошибка создания HTML: ' + error.message);
+            }
+        }
     </script>
 </body>
 </html>
+
+        // ✅ НОВАЯ ФУНКЦИЯ: Скачать HTML предпросмотр этикеток
+        async function downloadAllHTML() {
+            if (!window.generatedBoxes || window.generatedBoxes.length === 0) {
+                alert('Нет сгенерированных коробок');
+                return;
+            }
+
+            try {
+                await QRGenerator.downloadHTML(window.generatedBoxes);
+                alert('✅ HTML файл скачан! Открой его в браузере и нажми Ctrl+P для печати');
+            } catch (error) {
+                alert('Ошибка создания HTML: ' + error.message);
+            }
+        }

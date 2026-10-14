@@ -1,43 +1,22 @@
-// QR Code генерация в браузере
-// Используем библиотеку qrcode-generator
+// QR Code генерация в браузере с ПРАВИЛЬНОЙ ЭТИКЕТКОЙ
 
 function generateQRCode(text, size = 300) {
     return new Promise((resolve, reject) => {
-        try {
-            // Создаём QR-код (typeNumber=0 = auto, errorCorrectionLevel='H' = high)
-            const qr = qrcode(0, 'H');
-            qr.addData(text);
-            qr.make();
+        const canvas = document.createElement('canvas');
 
-            // Создаём canvas
-            const canvas = document.createElement('canvas');
-            const ctx = canvas.getContext('2d');
-
-            const moduleCount = qr.getModuleCount();
-            const cellSize = Math.floor(size / moduleCount);
-            canvas.width = cellSize * moduleCount;
-            canvas.height = cellSize * moduleCount;
-
-            // Рисуем белый фон
-            ctx.fillStyle = '#FFFFFF';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-            // Рисуем чёрные модули
-            ctx.fillStyle = '#000000';
-            for (let row = 0; row < moduleCount; row++) {
-                for (let col = 0; col < moduleCount; col++) {
-                    if (qr.isDark(row, col)) {
-                        ctx.fillRect(col * cellSize, row * cellSize, cellSize, cellSize);
-                    }
-                }
+        QRCode.toCanvas(canvas, text, {
+            width: size,
+            margin: 2,
+            errorCorrectionLevel: 'H'
+        }, (error) => {
+            if (error) {
+                reject(error);
+                return;
             }
 
-            // Конвертируем в Data URL
             const dataUrl = canvas.toDataURL('image/png');
             resolve(dataUrl);
-        } catch (error) {
-            reject(error);
-        }
+        });
     });
 }
 
@@ -63,67 +42,224 @@ function downloadQRCode(code, dataUrl) {
     link.click();
 }
 
-// Скачать все QR-коды как PDF (1 стикер 120×75 мм = 1 лист A4)
-// ========================================
-// КРУПНЫЙ НОМЕР СВЕРХУ + 2D ШТРИХКОД СНИЗУ!
-// Сборщик видит номер коробки БЕЗ СКАНИРОВАНИЯ!
-// ========================================
+// ✅ НОВАЯ ФУНКЦИЯ: Скачать все QR-коды как ЭТИКЕТКИ (PDF с правильным форматом)
 async function downloadQRCodesAsPDF(boxes) {
-    console.log('=== downloadQRCodesAsPDF START ===');
-    console.log('Количество коробок:', boxes.length);
-    console.log('Первая коробка:', boxes[0]);
-
+    // Используем jsPDF
     const { jsPDF } = window.jspdf;
-    const doc = new jsPDF();
+    
+    // Создаём PDF в формате A4 для печати этикеток
+    const doc = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4'
+    });
 
-    // Стикер Ozon: 120×75 мм
-    const stickerWidth = 120;
-    const stickerHeight = 75;
-
-    // Центрируем на листе A4 (210×297 мм)
-    const pageWidth = 210;
-    const pageHeight = 297;
-    const x = (pageWidth - stickerWidth) / 2;
-    const y = (pageHeight - stickerHeight) / 2;
+    const pageWidth = doc.internal.pageSize.width;   // 210 мм
+    const pageHeight = doc.internal.pageSize.height; // 297 мм
+    
+    // Размер этикетки: 100x70 мм (стандартная наклейка)
+    const labelWidth = 100;
+    const labelHeight = 70;
+    const margin = 5; // отступ от края
+    
+    // Сколько этикеток в ряду
+    const labelsPerRow = Math.floor((pageWidth - margin) / (labelWidth + margin));
+    
+    let labelIndex = 0;
+    let pageIndex = 0;
 
     for (let i = 0; i < boxes.length; i++) {
         const box = boxes[i];
-
-        console.log(`Коробка ${i + 1}: code="${box.code}", qr=${box.qr ? 'OK' : 'MISSING'}`);
-
-        if (i > 0) {
+        
+        // Вычисляем позицию на странице
+        const rowOnPage = Math.floor((labelIndex % (Math.floor((pageHeight - margin) / (labelHeight + margin)) * labelsPerRow)) / labelsPerRow);
+        const colOnPage = labelIndex % labelsPerRow;
+        
+        // Если этикетка не влезает на страницу - создаём новую
+        if (labelIndex > 0 && (labelIndex % (Math.floor((pageHeight - margin) / (labelHeight + margin)) * labelsPerRow)) === 0) {
             doc.addPage();
+            pageIndex++;
+            rowOnPage = 0;
+            colOnPage = 0;
         }
+        
+        const x = margin + colOnPage * (labelWidth + margin);
+        const y = margin + rowOnPage * (labelHeight + margin);
 
-        // ======================================
-        // КРУПНЫЙ НОМЕР КОРОБКИ СВЕРХУ!
-        // Сборщик видит номер БЕЗ СКАНИРОВАНИЯ!
-        // ======================================
-        doc.setFontSize(64);  // ← 64pt КРУПНЕЙШИЙ!
-        doc.setFont('helvetica', 'bold');
+        // ===== РИСУЕМ ЭТИКЕТКУ =====
+        
+        // Чёрный прямоугольник вокруг (рамка)
+        doc.setDrawColor(0, 0, 0);
+        doc.setLineWidth(0.5);
+        doc.rect(x, y, labelWidth, labelHeight);
 
-        // Рисуем рамку стикера (для визуализации)
-        doc.setDrawColor(200, 200, 200);
-        doc.rect(x, y, stickerWidth, stickerHeight);
+        // НОМЕР КОРОБКИ СВЕРХУ (крупный и жирный)
+        doc.setFontSize(18);
+        doc.setFont(undefined, 'bold');
+        doc.text(box.code, x + labelWidth / 2, y + 8, { align: 'center' });
 
-        // НОМЕР В ЦЕНТРЕ ВЕРХНЕЙ ЧАСТИ
-        const textY = y + 25;
-        doc.text(box.code, x + stickerWidth / 2, textY, { align: 'center' });
-
-        // 2D штрихкод (QR) под номером
-        const qrSize = 45;
-        const qrX = x + (stickerWidth - qrSize) / 2;
-        const qrY = textY + 5;
+        // QR-код (по центру, ниже номера)
+        const qrSize = 40; // размер QR в мм
+        const qrX = x + (labelWidth - qrSize) / 2;
+        const qrY = y + 15;
         doc.addImage(box.qr, 'PNG', qrX, qrY, qrSize, qrSize);
+
+        // Дополнительный текст внизу (маленький шрифт)
+        doc.setFontSize(8);
+        doc.setFont(undefined, 'normal');
+        doc.text(`Дата: ${new Date().toLocaleDateString('ru-RU')}`, x + 2, y + labelHeight - 3);
+
+        labelIndex++;
     }
 
-    console.log('=== downloadQRCodesAsPDF END ===');
-    doc.save('box-stickers-ozon-120x75.pdf');
+    doc.save('box-qr-labels.pdf');
+}
+
+// ✅ НОВАЯ ФУНКЦИЯ: Скачать как HTML для предпросмотра перед печатью
+function downloadQRCodesAsHTML(boxes) {
+    const html = `
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Этикетки коробок</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: Arial, sans-serif;
+            padding: 5mm;
+            background: #f0f0f0;
+        }
+        
+        .page {
+            width: 210mm;
+            height: 297mm;
+            background: white;
+            padding: 5mm;
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 5mm;
+            break-after: page;
+            page-break-after: always;
+            margin: 0 auto 10mm;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .label {
+            width: 100mm;
+            height: 70mm;
+            border: 2px solid #000;
+            padding: 8px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            align-items: center;
+            page-break-inside: avoid;
+            break-inside: avoid;
+        }
+        
+        .label-code {
+            font-size: 24px;
+            font-weight: bold;
+            text-align: center;
+            word-break: break-all;
+            line-height: 1.2;
+        }
+        
+        .label-qr {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .label-qr img {
+            max-width: 50mm;
+            max-height: 50mm;
+            image-rendering: pixelated;
+        }
+        
+        .label-date {
+            font-size: 8px;
+            color: #666;
+            text-align: center;
+            width: 100%;
+        }
+        
+        @media print {
+            body {
+                padding: 0;
+                background: white;
+            }
+            
+            .page {
+                box-shadow: none;
+                margin: 0;
+            }
+        }
+    </style>
+</head>
+<body>
+    ${generatePagesHTML(boxes)}
+    
+    <script>
+        console.log('Для печати: File → Print → Выбери принтер → Печать');
+        console.log('Убедись что в настройках принтера:');
+        console.log('- Размер бумаги: A4');
+        console.log('- Ориентация: Портретная');
+        console.log('- Поля: Нет/Минимальные');
+        console.log('- Масштаб: 100%');
+    </script>
+</body>
+</html>
+    `;
+    
+    // Сохраняем HTML в файл
+    const blob = new Blob([html], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `box-qr-labels-${new Date().getTime()}.html`;
+    link.click();
+    URL.revokeObjectURL(url);
+}
+
+function generatePagesHTML(boxes) {
+    let html = '';
+    let labelsPerPage = 4; // 2 в ряду × 2 в столбце для листа A4
+    
+    for (let i = 0; i < boxes.length; i += labelsPerPage) {
+        html += '<div class="page">';
+        
+        for (let j = 0; j < labelsPerPage && (i + j) < boxes.length; j++) {
+            const box = boxes[i + j];
+            html += `
+            <div class="label">
+                <div class="label-code">${box.code}</div>
+                <div class="label-qr">
+                    <img src="${box.qr}" alt="${box.code}">
+                </div>
+                <div class="label-date">Дата: ${new Date().toLocaleDateString('ru-RU')}</div>
+            </div>
+            `;
+        }
+        
+        html += '</div>';
+    }
+    
+    return html;
 }
 
 window.QRGenerator = {
     generate: generateQRCode,
     generateBatch: generateBoxQRCodes,
     download: downloadQRCode,
-    downloadPDF: downloadQRCodesAsPDF
+    downloadPDF: downloadQRCodesAsPDF,
+    downloadHTML: downloadQRCodesAsHTML  // ✅ НОВЫЙ метод
 };

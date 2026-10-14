@@ -245,9 +245,14 @@
                 resultDiv.innerHTML = `
                     <div class="alert alert-success" style="margin-top: 1rem;">
                         ✅ Создано ${count} коробок!
-                        <button onclick="downloadAllQR()" class="btn btn-primary" style="margin-top: 0.5rem;">
-                            📥 Скачать все QR-коды (PDF)
-                        </button>
+                        <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.5rem;">
+                            <button onclick="downloadAllQR()" class="btn btn-primary">
+                                📥 Скачать PDF
+                            </button>
+                            <button onclick="downloadAllHTML()" class="btn btn-success">
+                                🖨️ Предпросмотр этикеток (HTML)
+                            </button>
+                        </div>
                     </div>
                 `;
 
@@ -381,6 +386,36 @@
                 alert('Ошибка инициализации БД: ' + error.message);
             }
         })();
+
+        // ✅ НОВАЯ ФУНКЦИЯ: Скачать HTML предпросмотр этикеток
+        async function downloadAllHTML() {
+            if (!window.generatedBoxes || window.generatedBoxes.length === 0) {
+                alert('Нет сгенерированных коробок');
+                return;
+            }
+
+            try {
+                await QRGenerator.downloadHTML(window.generatedBoxes);
+                alert('✅ HTML файл скачан! Открой его в браузере и нажми Ctrl+P для печати');
+            } catch (error) {
+                alert('Ошибка создания HTML: ' + error.message);
+            }
+        }
     </script>
 </body>
 </html>
+
+        // ✅ НОВАЯ ФУНКЦИЯ: Скачать HTML предпросмотр этикеток
+        async function downloadAllHTML() {
+            if (!window.generatedBoxes || window.generatedBoxes.length === 0) {
+                alert('Нет сгенерированных коробок');
+                return;
+            }
+
+            try {
+                await QRGenerator.downloadHTML(window.generatedBoxes);
+                alert('✅ HTML файл скачан! Открой его в браузере и нажми Ctrl+P для печати');
+            } catch (error) {
+                alert('Ошибка создания HTML: ' + error.message);
+            }
+        }
