@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#2563eb">
+    <title>Box Scanner - Система локации товаров</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="manifest" href="manifest.json">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>📦 Box Scanner</h1>
+            <p class="subtitle">Система локации товаров на складе</p>
+        </header>
+
+        <main>
+            <div class="menu-grid">
+                <a href="admin.html" class="menu-card">
+                    <div class="menu-icon">⚙️</div>
+                    <h2>Настройка</h2>
+                    <p>Загрузить товары, создать коробки</p>
+                </a>
+
+                <a href="box.html" class="menu-card">
+                    <div class="menu-icon">📦</div>
+                    <h2>Инвентаризация</h2>
+                    <p>Заполнить коробки товарами</p>
+                </a>
+
+                <a href="search.html" class="menu-card">
+                    <div class="menu-icon">🔍</div>
+                    <h2>Поиск товара</h2>
+                    <p>Найти товар по штрихкоду</p>
+                </a>
+
+                <a href="assembly.html" class="menu-card">
+                    <div class="menu-icon">📋</div>
+                    <h2>Сборка заказов</h2>
+                    <p>Сборочный лист Ozon</p>
+                </a>
+            </div>
+        </main>
+
+        <footer>
+            <p>Box Scanner v1.0 | API: <span id="api-status">проверка...</span></p>
+        </footer>
+    </div>
+
+    <script src="app.js"></script>
+    <script>
+        // Проверка подключения к API
+        checkApiStatus();
+    </script>
+</body>
+</html>

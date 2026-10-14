@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Коробка - Box Scanner</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>📦 Коробка</h1>
+            <a href="index.html" class="btn btn-secondary">← Назад</a>
+        </header>
+
+        <main>
+            <!-- Сканирование QR коробки -->
+            <div class="card" id="scan-box-section">
+                <div class="card-header">Отсканируйте QR-код коробки</div>
+                <div id="qr-reader" style="width: 100%; max-width: 500px; margin: 0 auto;"></div>
+                <p style="text-align: center; margin-top: 1rem; color: var(--text-muted);">
+                    Или введите код вручную:
+                </p>
+                <div class="form-group">
+                    <input type="text" id="manual-box-code" class="form-control" placeholder="BOX-001">
+                </div>
+                <button onclick="openBox()" class="btn btn-primary" style="width: 100%;">
+                    Открыть коробку
+                </button>
+            </div>
+
+            <!-- Содержимое коробки -->
+            <div class="card" id="box-content-section" style="display: none;">
+                <div class="card-header">
+                    <span id="box-title">Коробка BOX-001</span>
+                    <button onclick="resetBox()" class="btn btn-secondary" style="float: right;">
+                        Другая коробка
+                    </button>
+                </div>
+
+                <!-- Сканирование товара -->
+                <div style="margin-bottom: 2rem;">
+                    <h3>Добавить товар</h3>
+                    <div id="barcode-reader" style="width: 100%; max-width: 500px; margin: 1rem auto;"></div>
+
+                    <div class="form-group">
+                        <label>Или введите штрихкод:</label>
+                        <input type="text" id="manual-barcode" class="form-control" placeholder="Отсканируйте или введите ШК">
+                        <button onclick="searchProduct()" class="btn btn-primary" style="margin-top: 0.5rem;">
+                            🔍 Найти товар
+                        </button>
+                    </div>
+
+                    <div id="found-product" style="display: none; padding: 1rem; background: var(--bg); border-radius: 8px; margin-top: 1rem;">
+                        <div style="font-weight: 600; color: var(--success);">✅ Товар найден:</div>
+                        <div style="margin-top: 0.5rem;">
+                            <div><strong>Артикул:</strong> <span id="product-article"></span></div>
+                            <div><strong>Название:</strong> <span id="product-name"></span></div>
+                        </div>
+                        <div class="form-group" style="margin-top: 1rem;">
+                            <label>Количество:</label>
+                            <input type="number" id="product-quantity" class="form-control" value="1" min="1">
+                        </div>
+                        <button onclick="addProductToBox()" class="btn btn-success" style="width: 100%;">
+                            ➕ Добавить в коробку
+                        </button>
+                    </div>
+
+                    <div id="product-not-found" style="display: none; padding: 1rem; background: #fee2e2; border-radius: 8px; margin-top: 1rem; border: 2px solid var(--danger);">
+                        <div style="font-weight: 600; color: var(--danger);">❌ Товар не найден</div>
+                        <p style="margin-top: 0.5rem;">Добавьте товар вручную:</p>
+                        <div class="form-group">
+                            <label>Артикул:</label>
+                            <input type="text" id="manual-article" class="form-control">
+                        </div>
+                        <div class="form-group">
+                            <label>Название:</label>
+                            <input type="text" id="manual-name" class="form-control">
+                        </div>
+                        <div class="form-group">
+                            <label>Количество:</label>
+                            <input type="number" id="manual-quantity" class="form-control" value="1" min="1">
+                        </div>
+                        <button onclick="createAndAddProduct()" class="btn btn-success" style="width: 100%;">
+                            ➕ Создать и добавить
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Список товаров в коробке -->
+                <div>
+                    <h3>Содержимое коробки:</h3>
+                    <ul class="items-list" id="box-items-list">
+                        <li style="text-align: center; color: var(--text-muted); padding: 2rem;">
+                            Коробка пуста
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="app.js"></script>
+    <script>
+        let currentBox = null;
+        let currentBarcode = null;
+        let currentProduct = null;
+        let qrScanner = null;
+        let barcodeScanner = null;
+
+        // Инициализация QR сканера для коробок
+        function initQRScanner() {
+            qrScanner = new Html5Qrcode("qr-reader");
+
+            qrScanner.start(
+                { facingMode: "environment" },
+                {
+                    fps: 10,
+                    qrbox: { width: 250, height: 250 }
+                },
+                (decodedText) => {
+                    document.getElementById('manual-box-code').value = decodedText;
+                    qrScanner.stop();
+                    openBox();
+                }
+            ).catch(err => {
+                console.log("QR Scanner error:", err);
+            });
+        }
+
+        // Инициализация сканера штрихкодов для товаров
+        function initBarcodeScanner() {
+            barcodeScanner = new Html5Qrcode("barcode-reader");
+
+            barcodeScanner.start(
+                { facingMode: "environment" },
+                {
+                    fps: 10,
+                    qrbox: { width: 250, height: 250 }
+                },
+                (decodedText) => {
+                    currentBarcode = decodedText;
+                    document.getElementById('manual-barcode').value = decodedText;
+                    searchProduct();
+                }
+            ).catch(err => {
+                console.log("Barcode Scanner error:", err);
+            });
+        }
+
+        // Открыть коробку
+        async function openBox() {
+            const code = document.getElementById('manual-box-code').value.trim().toUpperCase();
+            if (!code) {
+                Utils.showAlert('Введите код коробки', 'warning');
+                return;
+            }
+
+            try {
+                const box = await API.call(`/api/boxes/${code}`);
+                currentBox = box;
+
+                // Останавливаем QR сканер
+                if (qrScanner) {
+                    qrScanner.stop().catch(() => {});
+                }
+
+                // Показываем содержимое коробки
+                document.getElementById('scan-box-section').style.display = 'none';
+                document.getElementById('box-content-section').style.display = 'block';
+                document.getElementById('box-title').textContent = `Коробка ${box.code}`;
+
+                // Инициализируем сканер штрихкодов
+                initBarcodeScanner();
+
+                // Загружаем содержимое
+                loadBoxItems();
+
+            } catch (error) {
+                Utils.showAlert(error.message, 'danger');
+            }
+        }
+
+        // Загрузить содержимое коробки
+        function loadBoxItems() {
+            const list = document.getElementById('box-items-list');
+
+            if (!currentBox.items || currentBox.items.length === 0) {
+                list.innerHTML = '<li style="text-align: center; color: var(--text-muted); padding: 2rem;">Коробка пуста</li>';
+                return;
+            }
+
+            list.innerHTML = '';
+            currentBox.items.forEach(item => {
+                const li = document.createElement('li');
+                li.className = 'item-row';
+                li.innerHTML = `
+                    <div class="item-info">
+                        <div class="item-article">${item.product.article}</div>
+                        <div class="item-name">${item.product.name}</div>
+                    </div>
+                    <div class="item-quantity">${item.quantity} шт</div>
+                    <div class="item-actions">
+                        <button onclick="removeItem(${item.id})" class="btn btn-danger" style="padding: 0.5rem;">
+                            🗑️
+                        </button>
+                    </div>
+                `;
+                list.appendChild(li);
+            });
+        }
+
+        // Поиск товара по штрихкоду
+        async function searchProduct() {
+            const barcode = document.getElementById('manual-barcode').value.trim();
+            if (!barcode) {
+                Utils.showAlert('Введите штрихкод', 'warning');
+                return;
+            }
+
+            currentBarcode = barcode;
+
+            // Скрываем предыдущие результаты
+            document.getElementById('found-product').style.display = 'none';
+            document.getElementById('product-not-found').style.display = 'none';
+
+            try {
+                const result = await API.call(`/api/products/search?barcode=${encodeURIComponent(barcode)}`);
+                currentProduct = result.product;
+
+                // Показываем найденный товар
+                document.getElementById('product-article').textContent = result.product.article;
+                document.getElementById('product-name').textContent = result.product.name;
+                document.getElementById('found-product').style.display = 'block';
+
+            } catch (error) {
+                // Товар не найден
+                document.getElementById('product-not-found').style.display = 'block';
+                document.getElementById('manual-article').value = '';
+                document.getElementById('manual-name').value = '';
+                currentProduct = null;
+            }
+        }
+
+        // Добавить товар в коробку
+        async function addProductToBox() {
+            if (!currentProduct) return;
+
+            const quantity = parseInt(document.getElementById('product-quantity').value);
+            if (quantity < 1) {
+                Utils.showAlert('Количество должно быть больше 0', 'warning');
+                return;
+            }
+
+            try {
+                await API.call(`/api/boxes/${currentBox.code}/items`, {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        article: currentProduct.article,
+                        quantity: quantity
+                    })
+                });
+
+                Utils.showAlert('Товар добавлен в коробку', 'success');
+
+                // Обновляем содержимое
+                const updatedBox = await API.call(`/api/boxes/${currentBox.code}`);
+                currentBox = updatedBox;
+                loadBoxItems();
+
+                // Сбрасываем форму
+                document.getElementById('manual-barcode').value = '';
+                document.getElementById('product-quantity').value = '1';
+                document.getElementById('found-product').style.display = 'none';
+                currentProduct = null;
+
+            } catch (error) {
+                Utils.showAlert(error.message, 'danger');
+            }
+        }
+
+        // Создать товар вручную и добавить
+        async function createAndAddProduct() {
+            const article = document.getElementById('manual-article').value.trim();
+            const name = document.getElementById('manual-name').value.trim();
+            const quantity = parseInt(document.getElementById('manual-quantity').value);
+
+            if (!article || !name) {
+                Utils.showAlert('Заполните артикул и название', 'warning');
+                return;
+            }
+
+            try {
+                // Создаём товар
+                const newProduct = await API.call('/api/products/manual', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        article: article,
+                        name: name,
+                        barcode_manufacturer: currentBarcode,
+                        source: 'manual'
+                    })
+                });
+
+                // Добавляем в коробку
+                await API.call(`/api/boxes/${currentBox.code}/items`, {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        article: article,
+                        quantity: quantity
+                    })
+                });
+
+                Utils.showAlert('Товар создан и добавлен в коробку', 'success');
+
+                // Обновляем содержимое
+                const updatedBox = await API.call(`/api/boxes/${currentBox.code}`);
+                currentBox = updatedBox;
+                loadBoxItems();
+
+                // Сбрасываем форму
+                document.getElementById('manual-barcode').value = '';
+                document.getElementById('product-not-found').style.display = 'none';
+
+            } catch (error) {
+                Utils.showAlert(error.message, 'danger');
+            }
+        }
+
+        // Удалить товар из коробки
+        async function removeItem(itemId) {
+            if (!confirm('Удалить товар из коробки?')) return;
+
+            try {
+                await API.call(`/api/boxes/${currentBox.code}/items/${itemId}`, {
+                    method: 'DELETE'
+                });
+
+                Utils.showAlert('Товар удалён', 'success');
+
+                // Обновляем содержимое
+                const updatedBox = await API.call(`/api/boxes/${currentBox.code}`);
+                currentBox = updatedBox;
+                loadBoxItems();
+
+            } catch (error) {
+                Utils.showAlert(error.message, 'danger');
+            }
+        }
+
+        // Сброс (вернуться к сканированию коробки)
+        function resetBox() {
+            if (barcodeScanner) {
+                barcodeScanner.stop().catch(() => {});
+            }
+
+            document.getElementById('box-content-section').style.display = 'none';
+            document.getElementById('scan-box-section').style.display = 'block';
+            document.getElementById('manual-box-code').value = '';
+            currentBox = null;
+
+            // Перезапускаем QR сканер
+            initQRScanner();
+        }
+
+        // Инициализация при загрузке
+        window.addEventListener('load', () => {
+            // Проверяем есть ли код в URL
+            const code = Utils.getQueryParam('code');
+            if (code) {
+                document.getElementById('manual-box-code').value = code;
+                openBox();
+            } else {
+                initQRScanner();
+            }
+        });
+    </script>
+</body>
+</html>

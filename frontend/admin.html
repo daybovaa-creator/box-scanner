@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Настройка - Box Scanner</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>⚙️ Настройка системы</h1>
+            <a href="index.html" class="btn btn-secondary">← Назад</a>
+        </header>
+
+        <main>
+            <!-- Загрузка товаров от поставщика -->
+            <div class="card">
+                <div class="card-header">📦 Загрузить товары от поставщика</div>
+                <p>Файл с артикулами и штрихкодами производителя (CSV от Эл-Би)</p>
+                <div class="form-group">
+                    <input type="file" id="supplier-file" accept=".csv" class="form-control">
+                </div>
+                <button onclick="uploadSupplierFile()" id="upload-supplier-btn" class="btn btn-primary">
+                    📤 Загрузить
+                </button>
+                <div id="supplier-result"></div>
+            </div>
+
+            <!-- Загрузка товаров от Ozon -->
+            <div class="card">
+                <div class="card-header">🛒 Загрузить товары от Ozon</div>
+                <p>Файл со штрихкодами Ozon (Штрихкоды товаров.csv)</p>
+                <div class="form-group">
+                    <input type="file" id="ozon-file" accept=".csv" class="form-control">
+                </div>
+                <button onclick="uploadOzonFile()" id="upload-ozon-btn" class="btn btn-primary">
+                    📤 Загрузить
+                </button>
+                <div id="ozon-result"></div>
+            </div>
+
+            <!-- Создание коробок -->
+            <div class="card">
+                <div class="card-header">📦 Создать коробки</div>
+                <p>Генерация коробок с QR-кодами для инвентаризации</p>
+                <div class="form-group">
+                    <label for="box-count">Количество коробок (1-1000):</label>
+                    <input type="number" id="box-count" class="form-control" value="10" min="1" max="1000">
+                </div>
+                <button onclick="generateBoxes()" id="generate-boxes-btn" class="btn btn-success">
+                    🎯 Создать коробки
+                </button>
+                <div id="boxes-result"></div>
+                <div id="qr-codes-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 1rem; margin-top: 2rem;"></div>
+            </div>
+
+            <!-- Статистика -->
+            <div class="card">
+                <div class="card-header">📊 Статистика</div>
+                <div id="stats-content">
+                    <p>Загрузка...</p>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="app.js"></script>
+    <script>
+        // Загрузка файла от поставщика
+        async function uploadSupplierFile() {
+            const fileInput = document.getElementById('supplier-file');
+            const resultDiv = document.getElementById('supplier-result');
+            const file = fileInput.files[0];
+
+            if (!file) {
+                Utils.showAlert('Выберите файл', 'warning');
+                return;
+            }
+
+            Utils.setLoading('upload-supplier-btn', true);
+            resultDiv.innerHTML = '';
+
+            try {
+                const result = await API.uploadFile('/api/products/upload/supplier', file);
+                resultDiv.innerHTML = `
+                    <div class="alert alert-success" style="margin-top: 1rem;">
+                        ✅ Загружено успешно!<br>
+                        Создано новых: ${result.created}<br>
+                        Обновлено: ${result.updated}<br>
+                        Всего обработано: ${result.total}
+                    </div>
+                `;
+                loadStats();
+            } catch (error) {
+                resultDiv.innerHTML = `
+                    <div class="alert alert-danger" style="margin-top: 1rem;">
+                        ❌ Ошибка: ${error.message}
+                    </div>
+                `;
+            } finally {
+                Utils.setLoading('upload-supplier-btn', false);
+            }
+        }
+
+        // Загрузка файла от Ozon
+        async function uploadOzonFile() {
+            const fileInput = document.getElementById('ozon-file');
+            const resultDiv = document.getElementById('ozon-result');
+            const file = fileInput.files[0];
+
+            if (!file) {
+                Utils.showAlert('Выберите файл', 'warning');
+                return;
+            }
+
+            Utils.setLoading('upload-ozon-btn', true);
+            resultDiv.innerHTML = '';
+
+            try {
+                const result = await API.uploadFile('/api/products/upload/ozon', file);
+                resultDiv.innerHTML = `
+                    <div class="alert alert-success" style="margin-top: 1rem;">
+                        ✅ Загружено успешно!<br>
+                        Создано новых: ${result.created}<br>
+                        Обновлено: ${result.updated}<br>
+                        Всего обработано: ${result.total}
+                    </div>
+                `;
+                loadStats();
+            } catch (error) {
+                resultDiv.innerHTML = `
+                    <div class="alert alert-danger" style="margin-top: 1rem;">
+                        ❌ Ошибка: ${error.message}
+                    </div>
+                `;
+            } finally {
+                Utils.setLoading('upload-ozon-btn', false);
+            }
+        }
+
+        // Создание коробок
+        async function generateBoxes() {
+            const count = parseInt(document.getElementById('box-count').value);
+            const resultDiv = document.getElementById('boxes-result');
+            const qrGrid = document.getElementById('qr-codes-grid');
+
+            if (count < 1 || count > 1000) {
+                Utils.showAlert('Количество должно быть от 1 до 1000', 'warning');
+                return;
+            }
+
+            Utils.setLoading('generate-boxes-btn', true);
+            resultDiv.innerHTML = '';
+            qrGrid.innerHTML = '';
+
+            try {
+                const result = await API.call(`/api/boxes/generate/${count}`, {
+                    method: 'POST'
+                });
+
+                resultDiv.innerHTML = `
+                    <div class="alert alert-success" style="margin-top: 1rem;">
+                        ✅ Создано ${result.count} коробок!
+                    </div>
+                `;
+
+                // Показываем QR-коды
+                result.boxes.forEach(box => {
+                    const qrCard = document.createElement('div');
+                    qrCard.style.textAlign = 'center';
+                    qrCard.style.padding = '1rem';
+                    qrCard.style.background = 'white';
+                    qrCard.style.borderRadius = '8px';
+                    qrCard.style.border = '2px solid #e2e8f0';
+                    qrCard.innerHTML = `
+                        <h3 style="margin-bottom: 0.5rem;">${box.code}</h3>
+                        <img src="${box.qr_code}" alt="${box.code}" style="width: 100%; max-width: 150px;">
+                    `;
+                    qrGrid.appendChild(qrCard);
+                });
+
+                loadStats();
+            } catch (error) {
+                resultDiv.innerHTML = `
+                    <div class="alert alert-danger" style="margin-top: 1rem;">
+                        ❌ Ошибка: ${error.message}
+                    </div>
+                `;
+            } finally {
+                Utils.setLoading('generate-boxes-btn', false);
+            }
+        }
+
+        // Загрузка статистики
+        async function loadStats() {
+            const statsDiv = document.getElementById('stats-content');
+
+            try {
+                const [products, boxes] = await Promise.all([
+                    API.call('/api/products?limit=1000'),
+                    API.call('/api/boxes?limit=1000')
+                ]);
+
+                statsDiv.innerHTML = `
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
+                        <div style="text-align: center; padding: 1rem; background: #dbeafe; border-radius: 8px;">
+                            <div style="font-size: 2rem; font-weight: 600; color: #2563eb;">${products.length}</div>
+                            <div>Товаров в базе</div>
+                        </div>
+                        <div style="text-align: center; padding: 1rem; background: #d1fae5; border-radius: 8px;">
+                            <div style="font-size: 2rem; font-weight: 600; color: #10b981;">${boxes.length}</div>
+                            <div>Коробок создано</div>
+                        </div>
+                    </div>
+                `;
+            } catch (error) {
+                statsDiv.innerHTML = '<p>Ошибка загрузки статистики</p>';
+            }
+        }
+
+        // Загружаем статистику при открытии страницы
+        loadStats();
+    </script>
+</body>
+</html>
